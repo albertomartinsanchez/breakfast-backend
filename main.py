@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 
 app = FastAPI(title="My API", version="1.0.0")
 
-# Add this CORS configuration
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=["*"],  # In production, replace with your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -20,11 +20,12 @@ app.add_middleware(
 security = HTTPBearer()
 
 # Data models
-class Item(BaseModel):
+class Product(BaseModel):
     id: Optional[int] = None
     name: str
     description: Optional[str] = None
-    price: float
+    buy_price: float
+    sell_price: float
 
 class User(BaseModel):
     username: str
@@ -35,7 +36,7 @@ class Token(BaseModel):
     token_type: str
 
 # In-memory databases
-items_db = []
+products_db = []
 next_id = 1
 
 # Simulated users database (in production, use hashed passwords!)
@@ -102,45 +103,45 @@ def logout(username: str = Depends(verify_token)):
         del active_tokens[token]
     return {"message": "Logged out successfully"}
 
-@app.get("/items", response_model=List[Item])
-def get_items(username: str = Depends(verify_token)):
-    """Get all items (requires authentication)"""
-    return items_db
+@app.get("/products", response_model=List[Product])
+def get_products(username: str = Depends(verify_token)):
+    """Get all products (requires authentication)"""
+    return products_db
 
-@app.get("/items/{item_id}", response_model=Item)
-def get_item(item_id: int, username: str = Depends(verify_token)):
-    """Get a specific item by ID (requires authentication)"""
-    for item in items_db:
-        if item.id == item_id:
-            return item
-    raise HTTPException(status_code=404, detail="Item not found")
+@app.get("/products/{product_id}", response_model=Product)
+def get_product(product_id: int, username: str = Depends(verify_token)):
+    """Get a specific product by ID (requires authentication)"""
+    for product in products_db:
+        if product.id == product_id:
+            return product
+    raise HTTPException(status_code=404, detail="Product not found")
 
-@app.post("/items", response_model=Item, status_code=201)
-def create_item(item: Item, username: str = Depends(verify_token)):
-    """Create a new item (requires authentication)"""
+@app.post("/products", response_model=Product, status_code=201)
+def create_product(product: Product, username: str = Depends(verify_token)):
+    """Create a new product (requires authentication)"""
     global next_id
-    item.id = next_id
+    product.id = next_id
     next_id += 1
-    items_db.append(item)
-    return item
+    products_db.append(product)
+    return product
 
-@app.put("/items/{item_id}", response_model=Item)
-def update_item(item_id: int, updated_item: Item, username: str = Depends(verify_token)):
-    """Update an existing item (requires authentication)"""
-    for i, item in enumerate(items_db):
-        if item.id == item_id:
-            updated_item.id = item_id
-            items_db[i] = updated_item
-            return updated_item
-    raise HTTPException(status_code=404, detail="Item not found")
+@app.put("/products/{product_id}", response_model=Product)
+def update_product(product_id: int, updated_product: Product, username: str = Depends(verify_token)):
+    """Update an existing product (requires authentication)"""
+    for i, product in enumerate(products_db):
+        if product.id == product_id:
+            updated_product.id = product_id
+            products_db[i] = updated_product
+            return updated_product
+    raise HTTPException(status_code=404, detail="Product not found")
 
-@app.delete("/items/{item_id}")
-def delete_item(item_id: int, username: str = Depends(verify_token)):
-    """Delete an item (requires authentication)"""
-    for i, item in enumerate(items_db):
-        if item.id == item_id:
-            items_db.pop(i)
-            return {"message": "Item deleted successfully"}
-    raise HTTPException(status_code=404, detail="Item not found")
+@app.delete("/products/{product_id}")
+def delete_product(product_id: int, username: str = Depends(verify_token)):
+    """Delete a product (requires authentication)"""
+    for i, product in enumerate(products_db):
+        if product.id == product_id:
+            products_db.pop(i)
+            return {"message": "Product deleted successfully"}
+    raise HTTPException(status_code=404, detail="Product not found")
 
 # Run with: python -m uvicorn main:app --reload
