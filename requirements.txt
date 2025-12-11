@@ -3,3 +3,4 @@ uvicorn[standard]==0.24.0
 sqlalchemy[asyncio]==2.0.35
 asyncpg>=0.30.0
 aiosqlite==0.20.0
+pydantic-settings==2.1.0
