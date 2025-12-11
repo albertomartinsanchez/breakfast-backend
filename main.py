@@ -6,9 +6,9 @@ from typing import List, Optional
 import secrets
 from datetime import datetime, timedelta
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import Column, Integer, String, Float, select
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
 
 app = FastAPI(title="My API", version="1.0.0")
 
@@ -24,10 +24,10 @@ app.add_middleware(
 security = HTTPBearer()
 
 # Database setup
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./products.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./products.db")
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_async_engine(DATABASE_URL, echo=False)
+async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
 # Database Models
@@ -40,8 +40,11 @@ class ProductDB(Base):
     buy_price = Column(Float, nullable=False)
     sell_price = Column(Float, nullable=False)
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+# Create tables on startup
+@app.on_event("startup")
+async def startup():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 # Pydantic models
 class Product(BaseModel):
@@ -72,12 +75,9 @@ users_db = {
 active_tokens = {}
 
 # Database dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db():
+    async with async_session_maker() as session:
+        yield session
 
 def create_token(username: str) -> str:
     """Generate a new access token"""
@@ -110,11 +110,11 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
     return token_data["username"]
 
 @app.get("/")
-def read_root():
+async def read_root():
     return {"message": "Welcome to my FastAPI! Use /login to authenticate."}
 
 @app.post("/login", response_model=Token)
-def login(user: User):
+async def login(user: User):
     """Login and get access token"""
     if user.username not in users_db or users_db[user.username] != user.password:
         raise HTTPException(
@@ -126,7 +126,7 @@ def login(user: User):
     return {"access_token": token, "token_type": "bearer"}
 
 @app.post("/logout")
-def logout(username: str = Depends(verify_token)):
+async def logout(username: str = Depends(verify_token)):
     """Logout and invalidate token"""
     tokens_to_remove = [t for t, data in active_tokens.items() if data["username"] == username]
     for token in tokens_to_remove:
@@ -134,21 +134,23 @@ def logout(username: str = Depends(verify_token)):
     return {"message": "Logged out successfully"}
 
 @app.get("/products", response_model=List[Product])
-def get_products(username: str = Depends(verify_token), db: Session = Depends(get_db)):
+async def get_products(username: str = Depends(verify_token), db: AsyncSession = Depends(get_db)):
     """Get all products (requires authentication)"""
-    products = db.query(ProductDB).all()
+    result = await db.execute(select(ProductDB))
+    products = result.scalars().all()
     return products
 
 @app.get("/products/{product_id}", response_model=Product)
-def get_product(product_id: int, username: str = Depends(verify_token), db: Session = Depends(get_db)):
+async def get_product(product_id: int, username: str = Depends(verify_token), db: AsyncSession = Depends(get_db)):
     """Get a specific product by ID (requires authentication)"""
-    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    result = await db.execute(select(ProductDB).where(ProductDB.id == product_id))
+    product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
 
 @app.post("/products", response_model=Product, status_code=201)
-def create_product(product: Product, username: str = Depends(verify_token), db: Session = Depends(get_db)):
+async def create_product(product: Product, username: str = Depends(verify_token), db: AsyncSession = Depends(get_db)):
     """Create a new product (requires authentication)"""
     db_product = ProductDB(
         name=product.name,
@@ -157,14 +159,15 @@ def create_product(product: Product, username: str = Depends(verify_token), db: 
         sell_price=product.sell_price
     )
     db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
+    await db.commit()
+    await db.refresh(db_product)
     return db_product
 
 @app.put("/products/{product_id}", response_model=Product)
-def update_product(product_id: int, product: Product, username: str = Depends(verify_token), db: Session = Depends(get_db)):
+async def update_product(product_id: int, product: Product, username: str = Depends(verify_token), db: AsyncSession = Depends(get_db)):
     """Update an existing product (requires authentication)"""
-    db_product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    result = await db.execute(select(ProductDB).where(ProductDB.id == product_id))
+    db_product = result.scalar_one_or_none()
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
     
@@ -173,19 +176,20 @@ def update_product(product_id: int, product: Product, username: str = Depends(ve
     db_product.buy_price = product.buy_price
     db_product.sell_price = product.sell_price
     
-    db.commit()
-    db.refresh(db_product)
+    await db.commit()
+    await db.refresh(db_product)
     return db_product
 
 @app.delete("/products/{product_id}")
-def delete_product(product_id: int, username: str = Depends(verify_token), db: Session = Depends(get_db)):
+async def delete_product(product_id: int, username: str = Depends(verify_token), db: AsyncSession = Depends(get_db)):
     """Delete a product (requires authentication)"""
-    db_product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    result = await db.execute(select(ProductDB).where(ProductDB.id == product_id))
+    db_product = result.scalar_one_or_none()
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
     
-    db.delete(db_product)
-    db.commit()
+    await db.delete(db_product)
+    await db.commit()
     return {"message": "Product deleted successfully"}
 
 # Run with: python -m uvicorn main:app --reload
