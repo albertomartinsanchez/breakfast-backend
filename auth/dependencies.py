@@ -1,52 +1,29 @@
-import secrets
-from datetime import datetime, timedelta
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
+from core.database import get_db
+from core.security import decode_access_token, refresh_token
+from auth.crud import get_user_by_id
+from auth.models import User
 
 security = HTTPBearer()
 
-USERS_DB = {"admin": "secret123", "user": "pass456"}
-active_tokens = {}
-TOKEN_EXPIRE_HOURS = 24
-
-
-def create_access_token(username: str) -> str:
-    token = secrets.token_urlsafe(32)
-    active_tokens[token] = {
-        "username": username,
-        "expires": datetime.now() + timedelta(hours=TOKEN_EXPIRE_HOURS)
-    }
-    return token
-
-
-def verify_user_credentials(username: str, password: str) -> bool:
-    return username in USERS_DB and USERS_DB[username] == password
-
-
-def invalidate_user_tokens(username: str) -> None:
-    tokens_to_remove = [t for t, data in active_tokens.items() if data["username"] == username]
-    for token in tokens_to_remove:
-        del active_tokens[token]
-
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+async def get_current_user(response: Response, credentials: HTTPAuthorizationCredentials = Depends(security), db: AsyncSession = Depends(get_db)) -> User:
     token = credentials.credentials
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token", headers={"WWW-Authenticate": "Bearer"})
     
-    if token not in active_tokens:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload", headers={"WWW-Authenticate": "Bearer"})
     
-    token_data = active_tokens[token]
+    user = await get_user_by_id(db, int(user_id))
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found", headers={"WWW-Authenticate": "Bearer"})
     
-    if datetime.now() > token_data["expires"]:
-        del active_tokens[token]
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    new_token = refresh_token(token)
+    if new_token:
+        response.headers["X-New-Token"] = new_token
     
-    return token_data["username"]
+    return user

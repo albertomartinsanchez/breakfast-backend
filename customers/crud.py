@@ -1,0 +1,39 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List, Optional
+from customers.models import Customer
+from customers.schemas import CustomerCreate, CustomerUpdate
+
+async def get_customers(db: AsyncSession, user_id: int) -> List[Customer]:
+    result = await db.execute(select(Customer).where(Customer.user_id == user_id))
+    return result.scalars().all()
+
+async def get_customer_by_id(db: AsyncSession, customer_id: int, user_id: int) -> Optional[Customer]:
+    result = await db.execute(select(Customer).where(Customer.id == customer_id, Customer.user_id == user_id))
+    return result.scalar_one_or_none()
+
+async def create_customer(db: AsyncSession, customer_in: CustomerCreate, user_id: int) -> Customer:
+    db_customer = Customer(user_id=user_id, name=customer_in.name, address=customer_in.address, phone=customer_in.phone)
+    db.add(db_customer)
+    await db.commit()
+    await db.refresh(db_customer)
+    return db_customer
+
+async def update_customer(db: AsyncSession, customer_id: int, customer_in: CustomerUpdate, user_id: int) -> Optional[Customer]:
+    db_customer = await get_customer_by_id(db, customer_id, user_id)
+    if not db_customer:
+        return None
+    db_customer.name = customer_in.name
+    db_customer.address = customer_in.address
+    db_customer.phone = customer_in.phone
+    await db.commit()
+    await db.refresh(db_customer)
+    return db_customer
+
+async def delete_customer(db: AsyncSession, customer_id: int, user_id: int) -> bool:
+    db_customer = await get_customer_by_id(db, customer_id, user_id)
+    if not db_customer:
+        return False
+    await db.delete(db_customer)
+    await db.commit()
+    return True

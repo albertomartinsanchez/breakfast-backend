@@ -1,13 +1,12 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from core.database import Base
 
-class Product(Base):
-    __tablename__ = "products"
+class Customer(Base):
+    __tablename__ = "customer"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
     name = Column(String, nullable=False, index=True)
-    description = Column(String)
-    buy_price = Column(Float, nullable=False)
-    sell_price = Column(Float, nullable=False)
+    address = Column(String)
+    phone = Column(String)
     user = relationship("User")
