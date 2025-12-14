@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_name: str = "Product Management API"
-    app_version: str = "2.0.0"
+    app_version: str = "2.0.1"
     cors_origins: list = ["*"]
     jwt_secret_key: str = "your-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"
