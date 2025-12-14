@@ -8,11 +8,25 @@ from products.crud import get_product_by_id
 from customers.crud import get_customer_by_id
 
 async def get_sales(db: AsyncSession, user_id: int) -> List[Sale]:
-    result = await db.execute(select(Sale).where(Sale.user_id == user_id).options(selectinload(Sale.items)))
+    result = await db.execute(
+        select(Sale)
+        .where(Sale.user_id == user_id)
+        .options(
+            selectinload(Sale.items).selectinload(SaleItem.product),
+            selectinload(Sale.items).selectinload(SaleItem.customer)
+        )
+    )
     return result.scalars().all()
 
 async def get_sale_by_id(db: AsyncSession, sale_id: int, user_id: int) -> Optional[Sale]:
-    result = await db.execute(select(Sale).where(Sale.id == sale_id, Sale.user_id == user_id).options(selectinload(Sale.items)))
+    result = await db.execute(
+        select(Sale)
+        .where(Sale.id == sale_id, Sale.user_id == user_id)
+        .options(
+            selectinload(Sale.items).selectinload(SaleItem.product),
+            selectinload(Sale.items).selectinload(SaleItem.customer)
+        )
+    )
     return result.scalar_one_or_none()
 
 async def create_sale(db: AsyncSession, sale_in: SaleCreate, user_id: int) -> Sale:
@@ -34,7 +48,16 @@ async def create_sale(db: AsyncSession, sale_in: SaleCreate, user_id: int) -> Sa
     
     await db.commit()
     await db.refresh(db_sale)
-    result = await db.execute(select(Sale).where(Sale.id == db_sale.id).options(selectinload(Sale.items)))
+    
+    # Re-fetch with eager loading
+    result = await db.execute(
+        select(Sale)
+        .where(Sale.id == db_sale.id)
+        .options(
+            selectinload(Sale.items).selectinload(SaleItem.product),
+            selectinload(Sale.items).selectinload(SaleItem.customer)
+        )
+    )
     return result.scalar_one()
 
 async def update_sale(db: AsyncSession, sale_id: int, sale_in: SaleUpdate, user_id: int) -> Optional[Sale]:
@@ -60,7 +83,16 @@ async def update_sale(db: AsyncSession, sale_id: int, sale_in: SaleUpdate, user_
     
     await db.commit()
     await db.refresh(db_sale)
-    result = await db.execute(select(Sale).where(Sale.id == db_sale.id).options(selectinload(Sale.items)))
+    
+    # Re-fetch with eager loading
+    result = await db.execute(
+        select(Sale)
+        .where(Sale.id == db_sale.id)
+        .options(
+            selectinload(Sale.items).selectinload(SaleItem.product),
+            selectinload(Sale.items).selectinload(SaleItem.customer)
+        )
+    )
     return result.scalar_one()
 
 async def delete_sale(db: AsyncSession, sale_id: int, user_id: int) -> bool:
