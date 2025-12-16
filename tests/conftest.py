@@ -1,5 +1,5 @@
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from unittest.mock import AsyncMock, MagicMock
 from main import app
 from core.database import get_db
@@ -18,18 +18,18 @@ def mock_user():
     return user
 
 @pytest.fixture
-def client(mock_db, mock_user):
+async def client(mock_db, mock_user):
     async def override_get_db():
         yield mock_db
     async def override_get_current_user():
         return mock_user
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
-    with TestClient(app) as test_client:
+    async with AsyncClient(app=app, base_url="http://test") as test_client:
         yield test_client
     app.dependency_overrides.clear()
 
 @pytest.fixture
-def public_client():
-    with TestClient(app) as test_client:
+async def public_client():
+    async with AsyncClient(app=app, base_url="http://test") as test_client:
         yield test_client
