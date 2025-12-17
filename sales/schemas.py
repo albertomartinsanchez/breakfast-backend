@@ -34,6 +34,7 @@ class SaleResponse(BaseModel):
     id: int
     user_id: int
     date: date
+    status: str    
     customer_sales: List[CustomerSaleResponse]
     total_benefit: float
     total_revenue: float
