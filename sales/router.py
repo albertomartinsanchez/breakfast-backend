@@ -34,7 +34,15 @@ def build_sale_response(sale) -> schemas.SaleResponse:
         total_benefit += customer_benefit
         total_revenue += customer_revenue
     
-    return schemas.SaleResponse(id=sale.id, user_id=sale.user_id, date=sale.date, customer_sales=customer_sales, total_benefit=total_benefit, total_revenue=total_revenue)
+    return schemas.SaleResponse(
+        id=sale.id, 
+        user_id=sale.user_id, 
+        date=sale.date, 
+        status=sale.status,  # ← ADD THIS LINE
+        customer_sales=customer_sales, 
+        total_benefit=total_benefit, 
+        total_revenue=total_revenue
+    )
 
 @router.get("/", response_model=List[schemas.SaleResponse])
 async def get_sales(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
