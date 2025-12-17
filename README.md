@@ -19,7 +19,6 @@
 - [Database Schema](#-database-schema)
 - [Testing](#-testing)
 - [Deployment](#-deployment)
-- [Contributing](#-contributing)
 
 ---
 
