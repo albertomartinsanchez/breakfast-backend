@@ -42,3 +42,42 @@ class SaleResponse(BaseModel):
 class SaleUpdate(BaseModel):
     date: date
     customer_sales: List[CustomerSaleCreate]
+
+# ============================================================================
+# DELIVERY SCHEMAS (Phase 1)
+# ============================================================================
+
+from typing import Optional, Literal
+from datetime import datetime
+
+class CustomerSequence(BaseModel):
+    """Schema for reordering delivery route"""
+    customer_id: int
+    sequence: int
+
+
+class DeliveryStepResponse(BaseModel):
+    id: int
+    sale_id: int
+    customer_id: int
+    customer_name: str
+    sequence_order: int
+    status: str
+    completed_at: Optional[datetime] = None
+    amount_collected: Optional[float] = None
+    skip_reason: Optional[str] = None
+    total_amount: float
+    items: List[dict]
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DeliveryProgressResponse(BaseModel):
+    total_deliveries: int
+    completed_count: int
+    pending_count: int
+    skipped_count: int
+    total_collected: float
+    total_expected: float
+    total_skipped_amount: float
+    current_delivery: Optional[DeliveryStepResponse] = None
