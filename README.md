@@ -105,17 +105,12 @@
    # Edit .env with your configuration
    ```
 
-5. **Run database migrations** *(if Phase 1 installed)*
-   ```bash
-   sqlite3 core/breakfast.db < migration_add_delivery.sql
-   ```
-
-6. **Start the server**
+5. **Start the server**
    ```bash
    uvicorn main:app --reload
    ```
 
-7. **Visit the interactive API docs**
+6. **Visit the interactive API docs**
    ```
    http://localhost:8000/docs
    ```
