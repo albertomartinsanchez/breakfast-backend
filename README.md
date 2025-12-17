@@ -78,7 +78,7 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/breakfast-business-api.git
+   git clone https://github.com/albertomartinsanchez/breakfast-business-api.git
    cd breakfast-business-api
    ```
 
@@ -484,14 +484,6 @@ graph LR
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👤 Author
-
-**Your Name**
-- GitHub: [@yourusername](https://github.com/yourusername)
-- Email: your.email@example.com
 
 ---
 
