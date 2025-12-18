@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.orm import selectinload
 from typing import List, Dict
 from datetime import datetime
@@ -119,22 +119,44 @@ async def get_delivery_route(db: AsyncSession, sale_id: int, user_id: int) -> Li
     
     return delivery_route
 
-
 async def update_delivery_route(
     db: AsyncSession, 
     sale_id: int, 
     route: List[Dict], 
     user_id: int
 ) -> bool:
-    """Update sequence order for delivery steps"""
-    # Verify sale belongs to user
+    """Update sequence order using offset to avoid conflicts"""
+    # Verify sale belongs to user and check status
     sale_result = await db.execute(
         select(Sale).where(Sale.id == sale_id, Sale.user_id == user_id)
     )
-    if not sale_result.scalar_one_or_none():
+    sale = sale_result.scalar_one_or_none()
+    
+    if not sale:
         raise ValueError("Sale not found")
     
-    # Update each delivery step
+    # Don't allow route changes if delivery is completed
+    if sale.status == "completed":
+        raise ValueError("Cannot modify route for completed delivery")
+    
+    # Get max sequence to calculate offset
+    max_seq_result = await db.execute(
+        select(func.max(SaleDeliveryStep.sequence_order))
+        .where(SaleDeliveryStep.sale_id == sale_id)
+    )
+    max_seq = max_seq_result.scalar() or 0
+    offset = max_seq + 1000  # Large offset to avoid any conflicts
+    
+    # Step 1: Add offset to all sequences
+    await db.execute(
+        update(SaleDeliveryStep)
+        .where(SaleDeliveryStep.sale_id == sale_id)
+        .values(sequence_order=SaleDeliveryStep.sequence_order + offset)
+    )
+    
+    await db.flush()
+    
+    # Step 2: Update to final values
     for item in route:
         await db.execute(
             update(SaleDeliveryStep)
@@ -147,7 +169,6 @@ async def update_delivery_route(
     
     await db.commit()
     return True
-
 
 async def complete_delivery(
     db: AsyncSession,
