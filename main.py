@@ -11,6 +11,8 @@ from sales.router_delivery import router as delivery_router
 from customers.router_analytics import router as customer_analytics_router
 from products.router_analytics import router as product_analytics_router
 from analytics.router import router as analytics_router
+from customers.router_access_token import router as token_router
+from public_orders.router import router as public_order_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,7 +20,13 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True, 
+    allow_methods=["*"], 
+    allow_headers=["*"])
+
 app.include_router(auth_router)
 app.include_router(products_router)
 app.include_router(customers_router)
@@ -27,6 +35,10 @@ app.include_router(delivery_router)
 app.include_router(customer_analytics_router)
 app.include_router(product_analytics_router)
 app.include_router(analytics_router)
+
+# New router for managing customer access tokens
+app.include_router(token_router)         # Admin: Generate tokens
+app.include_router(public_order_router)  # Public: Customer orders (NO AUTH)
 
 @app.get("/")
 async def root():

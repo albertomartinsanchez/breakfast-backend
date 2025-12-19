@@ -7,11 +7,12 @@ class Sale(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
-    status = Column(String, default="draft", nullable=False)  # NEW: draft, closed, in_progress, completed
+    status = Column(String, default="draft", nullable=False)  # draft, closed, in_progress, completed
     
     user = relationship("User")
     items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
     delivery_steps = relationship("SaleDeliveryStep", back_populates="sale", cascade="all, delete-orphan", order_by="SaleDeliveryStep.sequence_order")  # NEW
+    access_tokens = relationship("CustomerAccessToken", back_populates="sale")
 
 class SaleItem(Base):
     __tablename__ = "sale_item"
