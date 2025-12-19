@@ -12,7 +12,10 @@ class CustomerCreate(CustomerBase):
 class CustomerUpdate(CustomerBase):
     pass
 
+class AccessTokenResponse(BaseModel):
+    access_token: str
+
 class CustomerResponse(CustomerBase):
     id: int
     user_id: int
-    model_config = ConfigDict(from_attributes=True)
+    access_token: Optional[AccessTokenResponse] = None

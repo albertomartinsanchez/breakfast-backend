@@ -10,3 +10,4 @@ class Customer(Base):
     address = Column(String)
     phone = Column(String)
     user = relationship("User")
+    access_token = relationship("CustomerAccessToken", back_populates="customer", uselist=False, cascade="all, delete-orphan")

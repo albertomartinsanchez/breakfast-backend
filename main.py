@@ -11,6 +11,7 @@ from sales.router_delivery import router as delivery_router
 from customers.router_analytics import router as customer_analytics_router
 from products.router_analytics import router as product_analytics_router
 from analytics.router import router as analytics_router
+from public_orders.router import router as public_orders_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,6 +28,7 @@ app.include_router(delivery_router)
 app.include_router(customer_analytics_router)
 app.include_router(product_analytics_router)
 app.include_router(analytics_router)
+app.include_router(public_orders_router)  # Public customer ordering
 
 @app.get("/")
 async def root():
