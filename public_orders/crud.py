@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
@@ -215,3 +216,90 @@ async def update_customer_order(
         "order_total": order_total,
         "items_count": items_count
     }
+
+async def get_customer_delivery_status(db: AsyncSession, token: str, sale_id: int) -> Dict:
+    """Get customer's delivery status and position in queue"""
+    access = await validate_token(db, token)
+    
+    # Get sale
+    sale_result = await db.execute(
+        select(Sale).where(
+            Sale.id == sale_id,
+            Sale.user_id == access.customer.user_id
+        )
+    )
+    sale = sale_result.scalar_one_or_none()
+    if not sale:
+        raise ValueError("Sale not found")
+    
+    # Base response
+    response = {
+        "sale_status": sale.status,
+        "customer_delivery_status": "pending",
+        "position_in_queue": None,
+        "deliveries_ahead": None,
+        "estimated_minutes": None,
+        "completed_at": None,
+        "amount_collected": None,
+        "skip_reason": None
+    }
+    
+    # Only calculate delivery info if sale is in_progress or completed
+    if sale.status not in ["in_progress", "completed"]:
+        return response
+    
+    # Get customer's delivery step
+    from sales.models import SaleDeliveryStep
+    
+    delivery_result = await db.execute(
+        select(SaleDeliveryStep)
+        .where(
+            SaleDeliveryStep.sale_id == sale_id,
+            SaleDeliveryStep.customer_id == access.customer_id
+        )
+    )
+    delivery_step = delivery_result.scalar_one_or_none()
+    
+    if not delivery_step:
+        # Customer not in delivery route
+        return response
+    
+    # Update delivery status
+    response["customer_delivery_status"] = delivery_step.status
+    
+    if delivery_step.status == "completed":
+        response["completed_at"] = delivery_step.completed_at.isoformat() if delivery_step.completed_at else None
+        response["amount_collected"] = delivery_step.amount_collected
+    elif delivery_step.status == "skipped":
+        response["skip_reason"] = delivery_step.skip_reason
+    elif delivery_step.status == "pending":
+        # Calculate position in queue
+        all_deliveries_result = await db.execute(
+            select(SaleDeliveryStep)
+            .where(SaleDeliveryStep.sale_id == sale_id)
+            .order_by(SaleDeliveryStep.sequence_order)
+        )
+        all_deliveries = all_deliveries_result.scalars().all()
+        
+        # Find position
+        for idx, d in enumerate(all_deliveries):
+            if d.id == delivery_step.id:
+                response["position_in_queue"] = idx + 1
+                break
+        
+        # Count deliveries ahead that are still pending
+        deliveries_ahead = 0
+        for d in all_deliveries:
+            if d.sequence_order < delivery_step.sequence_order and d.status == "pending":
+                deliveries_ahead += 1
+        
+        response["deliveries_ahead"] = deliveries_ahead
+        
+        # Calculate estimated time (simple: 5 min per delivery ahead)
+        # TODO: Could calculate from actual completed delivery times
+        if deliveries_ahead > 0:
+            response["estimated_minutes"] = deliveries_ahead * 5
+        else:
+            response["estimated_minutes"] = 2  # Next up!
+    
+    return response

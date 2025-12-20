@@ -7,7 +7,8 @@ from public_orders.schemas import (
     PublicCustomerInfo,
     PublicSaleDetail,
     UpdateOrderRequest,
-    UpdateOrderResponse
+    UpdateOrderResponse,
+    DeliveryStatusResponse
 )
 
 router = APIRouter(prefix="/customer", tags=["public-customer"])
@@ -67,3 +68,20 @@ async def update_order(
         return UpdateOrderResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{token}/sales/{sale_id}/delivery-status", response_model=DeliveryStatusResponse)
+async def get_delivery_status(
+    token: str,
+    sale_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Public endpoint - no authentication required.
+    
+    Get customer's delivery status and position in queue.
+    """
+    try:
+        data = await crud.get_customer_delivery_status(db, token, sale_id)
+        return DeliveryStatusResponse(**data)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

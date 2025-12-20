@@ -67,3 +67,13 @@ class UpdateOrderResponse(BaseModel):
     message: str
     order_total: float
     items_count: int
+
+class DeliveryStatusResponse(BaseModel):
+    sale_status: str
+    customer_delivery_status: str  # pending, completed, skipped
+    position_in_queue: Optional[int] = None
+    deliveries_ahead: Optional[int] = None
+    estimated_minutes: Optional[int] = None
+    completed_at: Optional[str] = None
+    amount_collected: Optional[float] = None
+    skip_reason: Optional[str] = None
