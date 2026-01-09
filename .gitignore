@@ -208,3 +208,4 @@ __marimo__/
 
 # Postgres databases
 *.db
+local-tools/backup

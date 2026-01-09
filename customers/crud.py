@@ -1,22 +1,48 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
+import uuid
 from customers.models import Customer
+from customers.models_access_token import CustomerAccessToken
 from customers.schemas import CustomerCreate, CustomerUpdate
 
 async def get_customers(db: AsyncSession, user_id: int) -> List[Customer]:
-    result = await db.execute(select(Customer).where(Customer.user_id == user_id))
+    result = await db.execute(
+        select(Customer)
+        .where(Customer.user_id == user_id)
+        .options(selectinload(Customer.access_token))
+    )
     return result.scalars().all()
 
 async def get_customer_by_id(db: AsyncSession, customer_id: int, user_id: int) -> Optional[Customer]:
-    result = await db.execute(select(Customer).where(Customer.id == customer_id, Customer.user_id == user_id))
+    result = await db.execute(
+        select(Customer)
+        .where(Customer.id == customer_id, Customer.user_id == user_id)
+        .options(selectinload(Customer.access_token))
+    )
     return result.scalar_one_or_none()
 
 async def create_customer(db: AsyncSession, customer_in: CustomerCreate, user_id: int) -> Customer:
-    db_customer = Customer(user_id=user_id, name=customer_in.name, address=customer_in.address, phone=customer_in.phone)
+    # Create customer
+    db_customer = Customer(
+        user_id=user_id, 
+        name=customer_in.name, 
+        address=customer_in.address, 
+        phone=customer_in.phone
+    )
     db.add(db_customer)
+    await db.flush()
+    
+    # Auto-generate access token
+    token = CustomerAccessToken(
+        customer_id=db_customer.id,
+        access_token=str(uuid.uuid4())
+    )
+    db.add(token)
+    
     await db.commit()
-    await db.refresh(db_customer)
+    await db.refresh(db_customer, ["access_token"])
     return db_customer
 
 async def update_customer(db: AsyncSession, customer_id: int, customer_in: CustomerUpdate, user_id: int) -> Optional[Customer]:
