@@ -8,6 +8,17 @@ from datetime import datetime
 from customers.models_access_token import CustomerAccessToken
 from sales.models import Sale, SaleItem
 from products.models import Product
+from public_orders.message_codes import (
+    SALE_CLOSED,
+    SALE_IN_PROGRESS,
+    SALE_COMPLETED,
+    ORDER_UPDATED,
+    ORDER_CLEARED,
+    ERROR_INVALID_TOKEN,
+    ERROR_SALE_NOT_FOUND,
+    ERROR_SALE_CLOSED_NO_MODIFY,
+    ERROR_PRODUCT_NOT_FOUND,
+)
 
 
 async def validate_token(db: AsyncSession, token: str) -> CustomerAccessToken:
@@ -20,7 +31,7 @@ async def validate_token(db: AsyncSession, token: str) -> CustomerAccessToken:
     
     access = result.scalar_one_or_none()
     if not access:
-        raise ValueError("Invalid access token")
+        raise ValueError(ERROR_INVALID_TOKEN)
     
     # Update last accessed
     access.last_accessed_at = datetime.utcnow()
@@ -72,8 +83,8 @@ async def get_sale_for_ordering(db: AsyncSession, token: str, sale_id: int) -> D
     )
     sale = sale_result.scalar_one_or_none()
     if not sale:
-        raise ValueError("Sale not found")
-    
+        raise ValueError(ERROR_SALE_NOT_FOUND)
+
     # Get available products
     products_result = await db.execute(
         select(Product)
@@ -114,11 +125,11 @@ async def get_sale_for_ordering(db: AsyncSession, token: str, sale_id: int) -> D
     # Build message
     message = None
     if sale.status == "closed":
-        message = "This sale is closed. You cannot make changes."
+        message = SALE_CLOSED
     elif sale.status == "in_progress":
-        message = "Delivery is in progress!"
+        message = SALE_IN_PROGRESS
     elif sale.status == "completed":
-        message = "This sale has been completed."
+        message = SALE_COMPLETED
     
     return {
         "sale_id": sale_id,
@@ -160,11 +171,11 @@ async def update_customer_order(
     )
     sale = sale_result.scalar_one_or_none()
     if not sale:
-        raise ValueError("Sale not found")
-    
+        raise ValueError(ERROR_SALE_NOT_FOUND)
+
     # Check if sale is open
     if sale.status != "draft":
-        raise ValueError("This sale is closed and cannot be modified")
+        raise ValueError(ERROR_SALE_CLOSED_NO_MODIFY)
     
     # Delete existing items for this customer
     await db.execute(
@@ -192,7 +203,7 @@ async def update_customer_order(
         product = product_result.scalar_one_or_none()
         
         if not product:
-            raise ValueError(f"Product {item_data['product_id']} not found")
+            raise ValueError(ERROR_PRODUCT_NOT_FOUND)
         
         # Create sale item
         sale_item = SaleItem(
@@ -212,7 +223,7 @@ async def update_customer_order(
     
     return {
         "success": True,
-        "message": "Order updated successfully!" if items_count > 0 else "Order cleared!",
+        "message": ORDER_UPDATED if items_count > 0 else ORDER_CLEARED,
         "order_total": order_total,
         "items_count": items_count
     }
@@ -230,8 +241,8 @@ async def get_customer_delivery_status(db: AsyncSession, token: str, sale_id: in
     )
     sale = sale_result.scalar_one_or_none()
     if not sale:
-        raise ValueError("Sale not found")
-    
+        raise ValueError(ERROR_SALE_NOT_FOUND)
+
     # Base response
     response = {
         "sale_status": sale.status,
