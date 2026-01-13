@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+import json
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import get_db
+from core.database import get_db, async_session_maker
 from public_orders import crud
 from public_orders.schemas import (
     PublicCustomerInfo,
@@ -77,7 +80,7 @@ async def get_delivery_status(
 ):
     """
     Public endpoint - no authentication required.
-    
+
     Get customer's delivery status and position in queue.
     """
     try:
@@ -85,3 +88,50 @@ async def get_delivery_status(
         return DeliveryStatusResponse(**data)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/{token}/sales/{sale_id}/delivery-status/stream")
+async def stream_delivery_status(
+    token: str,
+    sale_id: int,
+    request: Request
+):
+    """
+    Public endpoint - no authentication required.
+
+    SSE stream for real-time delivery status updates.
+    Sends updates when delivery status changes.
+    """
+    async def event_generator():
+        last_data = None
+
+        while True:
+            # Check if client disconnected
+            if await request.is_disconnected():
+                break
+
+            try:
+                async with async_session_maker() as db:
+                    data = await crud.get_customer_delivery_status(db, token, sale_id)
+
+                    # Send update if data changed or first message
+                    if data != last_data:
+                        last_data = data
+                        yield f"data: {json.dumps(data)}\n\n"
+
+            except ValueError:
+                # Token or sale invalid - close the stream
+                yield f"data: {json.dumps({'error': 'invalid_request'})}\n\n"
+                break
+
+            # Wait before next check
+            await asyncio.sleep(5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
