@@ -3,7 +3,7 @@ from pydantic import ConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Product Management API"
-    app_version: str = "2.0.1"
+    app_version: str = "3.0."
     cors_origins: list = ["*"]
     database_url: str = "sqlite+aiosqlite:///./core/breakfast.db"
     jwt_secret_key: str = "your-secret-key-change-in-production"

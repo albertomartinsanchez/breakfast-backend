@@ -24,7 +24,7 @@ async def get_customer_view(
 ):
     """
     Public endpoint - no authentication required.
-    
+
     Get customer's personal page showing all sales.
     """
     try:
@@ -32,6 +32,48 @@ async def get_customer_view(
         return data
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/{token}/sales/status-stream")
+async def stream_sales_status(
+    token: str,
+    request: Request
+):
+    """
+    Public endpoint - no authentication required.
+
+    SSE stream for real-time sales status updates.
+    Sends updates when any sale status changes.
+    """
+    async def event_generator():
+        last_statuses = None
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            try:
+                async with async_session_maker() as db:
+                    data = await crud.get_customer_sales_statuses(db, token)
+
+                    if data != last_statuses:
+                        last_statuses = data
+                        yield f"data: {json.dumps(data)}\n\n"
+
+            except ValueError:
+                yield f"data: {json.dumps({'error': 'invalid_request'})}\n\n"
+                break
+
+            await asyncio.sleep(5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 @router.get("/{token}/sales/{sale_id}", response_model=PublicSaleDetail)

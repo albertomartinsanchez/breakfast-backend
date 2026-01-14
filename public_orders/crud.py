@@ -70,6 +70,27 @@ async def get_customer_sales_list(db: AsyncSession, token: str) -> Dict:
     }
 
 
+async def get_customer_sales_statuses(db: AsyncSession, token: str) -> List[Dict]:
+    """Get list of sales with full data for SSE streaming"""
+    access = await validate_token(db, token)
+
+    sales_result = await db.execute(
+        select(Sale)
+        .where(Sale.user_id == access.customer.user_id)
+        .order_by(Sale.date.desc())
+    )
+
+    return [
+        {
+            "id": sale.id,
+            "date": sale.date.isoformat(),
+            "status": sale.status,
+            "is_open": sale.status == "draft"
+        }
+        for sale in sales_result.scalars().all()
+    ]
+
+
 async def get_sale_for_ordering(db: AsyncSession, token: str, sale_id: int) -> Dict:
     """Get sale details for customer to place order"""
     access = await validate_token(db, token)
