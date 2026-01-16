@@ -26,10 +26,11 @@ async def get_customer_by_id(db: AsyncSession, customer_id: int, user_id: int) -
 async def create_customer(db: AsyncSession, customer_in: CustomerCreate, user_id: int) -> Customer:
     # Create customer
     db_customer = Customer(
-        user_id=user_id, 
-        name=customer_in.name, 
-        address=customer_in.address, 
-        phone=customer_in.phone
+        user_id=user_id,
+        name=customer_in.name,
+        address=customer_in.address,
+        phone=customer_in.phone,
+        credit=customer_in.credit or 0.0
     )
     db.add(db_customer)
     await db.flush()
@@ -52,6 +53,8 @@ async def update_customer(db: AsyncSession, customer_id: int, customer_in: Custo
     db_customer.name = customer_in.name
     db_customer.address = customer_in.address
     db_customer.phone = customer_in.phone
+    if customer_in.credit is not None:
+        db_customer.credit = customer_in.credit
     await db.commit()
     await db.refresh(db_customer)
     return db_customer

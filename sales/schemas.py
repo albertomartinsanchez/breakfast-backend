@@ -67,8 +67,12 @@ class DeliveryStepResponse(BaseModel):
     is_next: bool = False
     completed_at: Optional[datetime] = None
     amount_collected: Optional[float] = None
+    credit_applied: Optional[float] = None
     skip_reason: Optional[str] = None
     total_amount: float
+    customer_credit: float = 0.0
+    credit_to_apply: float = 0.0
+    amount_to_collect: float = 0.0
     items: List[dict]
 
     model_config = ConfigDict(from_attributes=True)
@@ -88,6 +92,7 @@ class DeliveryProgressResponse(BaseModel):
     pending_count: int
     skipped_count: int
     total_collected: float
+    total_credit_applied: float = 0.0
     total_expected: float
     total_skipped_amount: float
     current_delivery: Optional[DeliveryStepResponse] = None

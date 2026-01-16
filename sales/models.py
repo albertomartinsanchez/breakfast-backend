@@ -39,6 +39,7 @@ class SaleDeliveryStep(Base):
     is_next = Column(Boolean, default=False, nullable=False)  # True if selected as next delivery
     completed_at = Column(DateTime, nullable=True)
     amount_collected = Column(Float, nullable=True)
+    credit_applied = Column(Float, nullable=True, default=0.0)
     skip_reason = Column(String, nullable=True)
     
     sale = relationship("Sale", back_populates="delivery_steps")

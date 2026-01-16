@@ -39,7 +39,7 @@ class DeliveryCustomerUpdate(BaseModel):
     """Schema for updating delivery customer (select as next, complete, skip, reset)"""
     is_next: Optional[bool] = Field(None, description="Set to true to select this customer as next delivery")
     status: Optional[Literal["completed", "skipped", "pending"]] = Field(None, description="Update status")
-    amount_collected: Optional[float] = Field(None, gt=0, description="Amount collected (required for completed)")
+    amount_collected: Optional[float] = Field(None, ge=0, description="Amount collected (0 if fully covered by credit)")
     skip_reason: Optional[str] = Field(None, min_length=1, description="Reason for skipping (required for skipped)")
 
 

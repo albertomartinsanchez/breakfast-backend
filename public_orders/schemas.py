@@ -46,6 +46,9 @@ class PublicSaleDetail(BaseModel):
     is_open: bool
     customer_id: int
     customer_name: str
+    customer_credit: float = 0.0
+    credit_to_apply: float = 0.0
+    amount_to_pay: float = 0.0
     available_products: List[PublicProduct]
     current_order: List[PublicOrderItem]
     order_total: float

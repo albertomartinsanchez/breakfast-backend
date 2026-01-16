@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from sales.models import Sale, SaleItem
 from sales.models import SaleDeliveryStep
+from customers.models import Customer
 
 async def start_delivery(db: AsyncSession, sale_id: int, user_id: int) -> bool:
     """
@@ -88,7 +89,7 @@ async def get_delivery_route(db: AsyncSession, sale_id: int, user_id: int) -> Li
     # Group items by customer
     customer_items = defaultdict(list)
     customer_totals = defaultdict(float)
-    
+
     for item in sale_items:
         item_dict = {
             "product_id": item.product_id,
@@ -99,10 +100,29 @@ async def get_delivery_route(db: AsyncSession, sale_id: int, user_id: int) -> Li
         }
         customer_items[item.customer_id].append(item_dict)
         customer_totals[item.customer_id] += item_dict["total"]
-    
+
+    # Get customer credits
+    customer_ids = list(customer_totals.keys())
+    customers_result = await db.execute(
+        select(Customer).where(Customer.id.in_(customer_ids))
+    )
+    customer_credits = {c.id: c.credit for c in customers_result.scalars().all()}
+
     # Build response
     delivery_route = []
     for step in delivery_steps:
+        total_amount = customer_totals[step.customer_id]
+        customer_credit = customer_credits.get(step.customer_id, 0.0)
+
+        # For pending deliveries, calculate credit to apply
+        # For completed deliveries, use stored credit_applied
+        if step.status == "pending":
+            credit_to_apply = min(customer_credit, total_amount)
+            amount_to_collect = total_amount - credit_to_apply
+        else:
+            credit_to_apply = step.credit_applied or 0.0
+            amount_to_collect = step.amount_collected or 0.0
+
         delivery_route.append({
             "id": step.id,
             "sale_id": step.sale_id,
@@ -113,8 +133,12 @@ async def get_delivery_route(db: AsyncSession, sale_id: int, user_id: int) -> Li
             "is_next": step.is_next,
             "completed_at": step.completed_at,
             "amount_collected": step.amount_collected,
+            "credit_applied": step.credit_applied,
             "skip_reason": step.skip_reason,
-            "total_amount": customer_totals[step.customer_id],
+            "total_amount": total_amount,
+            "customer_credit": customer_credit,
+            "credit_to_apply": credit_to_apply,
+            "amount_to_collect": amount_to_collect,
             "items": customer_items[step.customer_id]
         })
 
@@ -231,42 +255,67 @@ async def complete_delivery(
     customer_id: int,
     amount_collected: float,
     user_id: int
-) -> bool:
-    """Mark a delivery step as completed"""
+) -> Dict:
+    """Mark a delivery step as completed and apply customer credit"""
     # Verify sale belongs to user
     sale_result = await db.execute(
         select(Sale).where(Sale.id == sale_id, Sale.user_id == user_id)
     )
     if not sale_result.scalar_one_or_none():
         raise ValueError("Sale not found")
-    
-    # Update delivery step
-    result = await db.execute(
-        update(SaleDeliveryStep)
-        .where(
+
+    # Verify delivery step exists and is pending
+    step_result = await db.execute(
+        select(SaleDeliveryStep).where(
             SaleDeliveryStep.sale_id == sale_id,
             SaleDeliveryStep.customer_id == customer_id,
             SaleDeliveryStep.status == "pending"
         )
-        .values(
-            status="completed",
-            is_next=False,
-            completed_at=datetime.now(),
-            amount_collected=amount_collected
-        )
-        .returning(SaleDeliveryStep)
     )
-    
-    updated = result.scalar_one_or_none()
-    if not updated:
+    step = step_result.scalar_one_or_none()
+    if not step:
         raise ValueError("Delivery step not found or already completed/skipped")
-    
+
+    # Calculate total order amount for this customer
+    items_result = await db.execute(
+        select(SaleItem).where(
+            SaleItem.sale_id == sale_id,
+            SaleItem.customer_id == customer_id
+        )
+    )
+    items = items_result.scalars().all()
+    total_order_amount = sum(item.sell_price_at_sale * item.quantity for item in items)
+
+    # Get customer and apply credit
+    customer_result = await db.execute(
+        select(Customer).where(Customer.id == customer_id)
+    )
+    customer = customer_result.scalar_one_or_none()
+
+    credit_applied = 0.0
+    if customer and customer.credit > 0:
+        credit_applied = min(customer.credit, total_order_amount)
+        customer.credit -= credit_applied
+
+    # Update delivery step
+    step.status = "completed"
+    step.is_next = False
+    step.completed_at = datetime.now()
+    step.amount_collected = amount_collected
+    step.credit_applied = credit_applied
+
     await db.commit()
-    
+
     # Check if all deliveries are done
     await check_and_complete_sale(db, sale_id)
-    
-    return True
+
+    return {
+        "success": True,
+        "total_order_amount": total_order_amount,
+        "credit_applied": credit_applied,
+        "amount_collected": amount_collected,
+        "new_customer_credit": customer.credit if customer else 0.0
+    }
 
 
 async def skip_delivery(
@@ -318,37 +367,44 @@ async def reset_delivery_to_pending(
     customer_id: int,
     user_id: int
 ) -> bool:
-    """Reset a delivery step back to pending (undo complete/skip)"""
+    """Reset a delivery step back to pending (undo complete/skip) and restore credit if applicable"""
     # Verify sale belongs to user
     sale_result = await db.execute(
         select(Sale).where(Sale.id == sale_id, Sale.user_id == user_id)
     )
     if not sale_result.scalar_one_or_none():
         raise ValueError("Sale not found")
-    
-    # Update delivery step
-    result = await db.execute(
-        update(SaleDeliveryStep)
-        .where(
+
+    # Get the delivery step to check if credit was applied
+    step_result = await db.execute(
+        select(SaleDeliveryStep).where(
             SaleDeliveryStep.sale_id == sale_id,
             SaleDeliveryStep.customer_id == customer_id
         )
-        .values(
-            status="pending",
-            is_next=False,
-            completed_at=None,
-            amount_collected=None,
-            skip_reason=None
-        )
-        .returning(SaleDeliveryStep)
     )
-    
-    updated = result.scalar_one_or_none()
-    if not updated:
+    step = step_result.scalar_one_or_none()
+    if not step:
         raise ValueError("Delivery step not found")
-    
+
+    # If it was completed with credit applied, restore the credit
+    if step.status == "completed" and step.credit_applied and step.credit_applied > 0:
+        customer_result = await db.execute(
+            select(Customer).where(Customer.id == customer_id)
+        )
+        customer = customer_result.scalar_one_or_none()
+        if customer:
+            customer.credit += step.credit_applied
+
+    # Reset delivery step
+    step.status = "pending"
+    step.is_next = False
+    step.completed_at = None
+    step.amount_collected = None
+    step.credit_applied = None
+    step.skip_reason = None
+
     await db.commit()
-    
+
     # If sale was completed, set it back to in_progress
     await db.execute(
         update(Sale)
@@ -356,7 +412,7 @@ async def reset_delivery_to_pending(
         .values(status="in_progress")
     )
     await db.commit()
-    
+
     return True
 
 
@@ -399,6 +455,7 @@ async def get_delivery_progress(db: AsyncSession, sale_id: int, user_id: int) ->
     skipped = [d for d in delivery_route if d["status"] == "skipped"]
     
     total_collected = sum(d["amount_collected"] or 0 for d in completed)
+    total_credit_applied = sum(d["credit_applied"] or 0 for d in completed)
     total_expected = sum(d["total_amount"] for d in delivery_route)
     total_skipped_amount = sum(d["total_amount"] for d in skipped)
 
@@ -411,6 +468,7 @@ async def get_delivery_progress(db: AsyncSession, sale_id: int, user_id: int) ->
         "pending_count": len(pending),
         "skipped_count": len(skipped),
         "total_collected": total_collected,
+        "total_credit_applied": total_credit_applied,
         "total_expected": total_expected,
         "total_skipped_amount": total_skipped_amount,
         "current_delivery": current_delivery,

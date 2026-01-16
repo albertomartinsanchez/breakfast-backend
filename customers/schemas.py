@@ -7,10 +7,10 @@ class CustomerBase(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
 
 class CustomerCreate(CustomerBase):
-    pass
+    credit: Optional[float] = Field(0.0, ge=0)
 
 class CustomerUpdate(CustomerBase):
-    pass
+    credit: Optional[float] = Field(None, ge=0)
 
 class AccessTokenResponse(BaseModel):
     access_token: str
@@ -18,4 +18,5 @@ class AccessTokenResponse(BaseModel):
 class CustomerResponse(CustomerBase):
     id: int
     user_id: int
+    credit: float = 0.0
     access_token: Optional[AccessTokenResponse] = None

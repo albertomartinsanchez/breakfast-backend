@@ -152,6 +152,11 @@ async def get_sale_for_ordering(db: AsyncSession, token: str, sale_id: int) -> D
     elif sale.status == "completed":
         message = SALE_COMPLETED
     
+    # Calculate amount to pay after credit
+    customer_credit = access.customer.credit or 0.0
+    credit_to_apply = min(customer_credit, order_total)
+    amount_to_pay = order_total - credit_to_apply
+
     return {
         "sale_id": sale_id,
         "sale_date": sale.date,
@@ -159,6 +164,9 @@ async def get_sale_for_ordering(db: AsyncSession, token: str, sale_id: int) -> D
         "is_open": is_open,
         "customer_id": access.customer_id,
         "customer_name": access.customer.name,
+        "customer_credit": customer_credit,
+        "credit_to_apply": credit_to_apply,
+        "amount_to_pay": amount_to_pay,
         "available_products": [
             {
                 "id": p.id,
