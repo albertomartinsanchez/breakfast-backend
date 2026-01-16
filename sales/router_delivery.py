@@ -12,7 +12,6 @@ from sales import crud_delivery
 from sales.schemas import (
     DeliveryStepResponse,
     DeliveryProgressResponse,
-    CustomerSequence,
 )
 
 router = APIRouter(prefix="/sales", tags=["sales", "delivery"])
@@ -36,14 +35,10 @@ class SaleStateResponse(BaseModel):
     cutoff_time: datetime
 
 
-class DeliveryRouteUpdate(BaseModel):
-    """Schema for reordering delivery route"""
-    route: List[CustomerSequence]
-
-
-class DeliveryCustomerStatusUpdate(BaseModel):
-    """Schema for updating delivery customer status"""
-    status: Literal["completed", "skipped", "pending"]
+class DeliveryCustomerUpdate(BaseModel):
+    """Schema for updating delivery customer (select as next, complete, skip, reset)"""
+    is_next: Optional[bool] = Field(None, description="Set to true to select this customer as next delivery")
+    status: Optional[Literal["completed", "skipped", "pending"]] = Field(None, description="Update status")
     amount_collected: Optional[float] = Field(None, gt=0, description="Amount collected (required for completed)")
     skip_reason: Optional[str] = Field(None, min_length=1, description="Reason for skipping (required for skipped)")
 
@@ -202,37 +197,6 @@ async def get_delivery(
         )
 
 
-@router.patch("/{sale_id}/delivery", status_code=status.HTTP_200_OK)
-async def update_delivery(
-    sale_id: int,
-    updates: DeliveryRouteUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Update the delivery route (reorder customers)
-    
-    Body example:
-    {
-      "route": [
-        {"customer_id": 1, "sequence": 1},
-        {"customer_id": 3, "sequence": 2},
-        {"customer_id": 2, "sequence": 3}
-      ]
-    }
-    """
-    try:
-        # Convert to dict format
-        route_dict = [{"customer_id": item.customer_id, "sequence": item.sequence} for item in updates.route]
-        await crud_delivery.update_delivery_route(db, sale_id, route_dict, current_user.id)
-        return {"message": "Delivery route updated successfully"}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
-
-
 @router.get("/{sale_id}/delivery/progress", response_model=DeliveryProgressResponse)
 async def get_delivery_progress(
     sale_id: int,
@@ -250,89 +214,103 @@ async def get_delivery_progress(
         )
 
 
-@router.patch("/{sale_id}/delivery/customers/{customer_id}/status", status_code=status.HTTP_200_OK)
-async def update_delivery_customer_status(
+@router.patch("/{sale_id}/delivery/customers/{customer_id}", status_code=status.HTTP_200_OK)
+async def update_delivery_customer(
     sale_id: int,
     customer_id: int,
-    status_update: DeliveryCustomerStatusUpdate,
+    updates: DeliveryCustomerUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Update delivery customer status
-    
+    Update delivery customer (select as next, complete, skip, or reset)
+
     Examples:
+    - Select as next: {"is_next": true}
     - Complete: {"status": "completed", "amount_collected": 12.50}
     - Skip: {"status": "skipped", "skip_reason": "Customer not home"}
     - Reset to pending: {"status": "pending"}
     """
     try:
-        # Validate required fields
-        if status_update.status == "completed":
-            if status_update.amount_collected is None:
+        # Handle is_next selection
+        if updates.is_next is True:
+            await crud_delivery.set_next_delivery(
+                db,
+                sale_id,
+                customer_id,
+                current_user.id
+            )
+            return {
+                "message": "Customer selected as next delivery",
+                "customer_id": customer_id,
+                "is_next": True
+            }
+
+        # Handle status updates
+        if updates.status == "completed":
+            if updates.amount_collected is None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="amount_collected is required when status is 'completed'"
                 )
-            
+
             await crud_delivery.complete_delivery(
                 db,
                 sale_id,
                 customer_id,
-                status_update.amount_collected,
+                updates.amount_collected,
                 current_user.id
             )
-            
+
             return {
                 "message": "Delivery marked as complete",
                 "customer_id": customer_id,
                 "status": "completed",
-                "amount_collected": status_update.amount_collected
+                "amount_collected": updates.amount_collected
             }
-        
-        elif status_update.status == "skipped":
-            if not status_update.skip_reason:
+
+        elif updates.status == "skipped":
+            if not updates.skip_reason:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="skip_reason is required when status is 'skipped'"
                 )
-            
+
             await crud_delivery.skip_delivery(
                 db,
                 sale_id,
                 customer_id,
-                status_update.skip_reason,
+                updates.skip_reason,
                 current_user.id
             )
-            
+
             return {
                 "message": "Delivery skipped",
                 "customer_id": customer_id,
                 "status": "skipped",
-                "reason": status_update.skip_reason
+                "reason": updates.skip_reason
             }
-        
-        elif status_update.status == "pending":
-            # Reset to pending (useful if accidentally marked wrong)
+
+        elif updates.status == "pending":
             await crud_delivery.reset_delivery_to_pending(
                 db,
                 sale_id,
                 customer_id,
                 current_user.id
             )
-            
+
             return {
                 "message": "Delivery reset to pending",
                 "customer_id": customer_id,
                 "status": "pending"
             }
-        
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status: {status_update.status}"
-            )
-    
+
+        # No valid update provided
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid update provided. Use is_next or status."
+        )
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

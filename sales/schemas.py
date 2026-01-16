@@ -64,13 +64,22 @@ class DeliveryStepResponse(BaseModel):
     customer_name: str
     sequence_order: int
     status: str
+    is_next: bool = False
     completed_at: Optional[datetime] = None
     amount_collected: Optional[float] = None
     skip_reason: Optional[str] = None
     total_amount: float
     items: List[dict]
-    
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class DeliveryStepUpdate(BaseModel):
+    """Schema for updating a delivery step (select as next, complete, skip, reset)"""
+    is_next: Optional[bool] = None
+    status: Optional[Literal["pending", "completed", "skipped"]] = None
+    amount_collected: Optional[float] = None
+    skip_reason: Optional[str] = None
 
 
 class DeliveryProgressResponse(BaseModel):
@@ -82,3 +91,4 @@ class DeliveryProgressResponse(BaseModel):
     total_expected: float
     total_skipped_amount: float
     current_delivery: Optional[DeliveryStepResponse] = None
+    pending_deliveries: List[DeliveryStepResponse] = []

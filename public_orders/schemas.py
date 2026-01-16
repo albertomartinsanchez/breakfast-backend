@@ -71,6 +71,7 @@ class UpdateOrderResponse(BaseModel):
 class DeliveryStatusResponse(BaseModel):
     sale_status: str
     customer_delivery_status: str  # pending, completed, skipped
+    is_next: bool = False  # True if this customer is selected as next delivery
     position_in_queue: Optional[int] = None
     deliveries_ahead: Optional[int] = None
     estimated_minutes: Optional[int] = None

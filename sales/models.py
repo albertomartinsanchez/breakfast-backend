@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, Date, String, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import Column, Integer, Float, Date, String, ForeignKey, DateTime, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship
 from core.database import Base
 
@@ -36,6 +36,7 @@ class SaleDeliveryStep(Base):
     customer_id = Column(Integer, ForeignKey("customer.id"), nullable=False)
     sequence_order = Column(Integer, nullable=False)
     status = Column(String, default="pending", nullable=False)  # pending, completed, skipped
+    is_next = Column(Boolean, default=False, nullable=False)  # True if selected as next delivery
     completed_at = Column(DateTime, nullable=True)
     amount_collected = Column(Float, nullable=True)
     skip_reason = Column(String, nullable=True)

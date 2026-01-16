@@ -46,7 +46,7 @@ async def stream_sales_status(
     Sends updates when any sale status changes.
     """
     async def event_generator():
-        last_statuses = None
+        last_json = None
 
         while True:
             if await request.is_disconnected():
@@ -54,17 +54,19 @@ async def stream_sales_status(
 
             try:
                 async with async_session_maker() as db:
+                    await db.connection()
                     data = await crud.get_customer_sales_statuses(db, token)
+                    data_json = json.dumps(data, sort_keys=True)
 
-                    if data != last_statuses:
-                        last_statuses = data
-                        yield f"data: {json.dumps(data)}\n\n"
+                    if data_json != last_json:
+                        last_json = data_json
+                        yield f"data: {data_json}\n\n"
 
             except ValueError:
                 yield f"data: {json.dumps({'error': 'invalid_request'})}\n\n"
                 break
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
 
     return StreamingResponse(
         event_generator(),
@@ -145,7 +147,7 @@ async def stream_delivery_status(
     Sends updates when delivery status changes.
     """
     async def event_generator():
-        last_data = None
+        last_json = None
 
         while True:
             # Check if client disconnected
@@ -154,12 +156,15 @@ async def stream_delivery_status(
 
             try:
                 async with async_session_maker() as db:
+                    # Force fresh read by beginning a new transaction
+                    await db.connection()
                     data = await crud.get_customer_delivery_status(db, token, sale_id)
+                    data_json = json.dumps(data, sort_keys=True)
 
                     # Send update if data changed or first message
-                    if data != last_data:
-                        last_data = data
-                        yield f"data: {json.dumps(data)}\n\n"
+                    if data_json != last_json:
+                        last_json = data_json
+                        yield f"data: {data_json}\n\n"
 
             except ValueError:
                 # Token or sale invalid - close the stream
@@ -167,7 +172,7 @@ async def stream_delivery_status(
                 break
 
             # Wait before next check
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
 
     return StreamingResponse(
         event_generator(),

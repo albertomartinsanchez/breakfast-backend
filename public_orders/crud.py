@@ -268,6 +268,7 @@ async def get_customer_delivery_status(db: AsyncSession, token: str, sale_id: in
     response = {
         "sale_status": sale.status,
         "customer_delivery_status": "pending",
+        "is_next": False,
         "position_in_queue": None,
         "deliveries_ahead": None,
         "estimated_minutes": None,
@@ -298,7 +299,8 @@ async def get_customer_delivery_status(db: AsyncSession, token: str, sale_id: in
     
     # Update delivery status
     response["customer_delivery_status"] = delivery_step.status
-    
+    response["is_next"] = delivery_step.is_next
+
     if delivery_step.status == "completed":
         response["completed_at"] = delivery_step.completed_at.isoformat() if delivery_step.completed_at else None
         response["amount_collected"] = delivery_step.amount_collected

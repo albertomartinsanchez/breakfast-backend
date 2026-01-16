@@ -110,13 +110,14 @@ async def get_delivery_route(db: AsyncSession, sale_id: int, user_id: int) -> Li
             "customer_name": step.customer.name,
             "sequence_order": step.sequence_order,
             "status": step.status,
+            "is_next": step.is_next,
             "completed_at": step.completed_at,
             "amount_collected": step.amount_collected,
             "skip_reason": step.skip_reason,
             "total_amount": customer_totals[step.customer_id],
             "items": customer_items[step.customer_id]
         })
-    
+
     return delivery_route
 
 async def update_delivery_route(
@@ -170,6 +171,60 @@ async def update_delivery_route(
     await db.commit()
     return True
 
+
+async def set_next_delivery(
+    db: AsyncSession,
+    sale_id: int,
+    customer_id: int,
+    user_id: int
+) -> bool:
+    """Set a customer as the next delivery (clears any previous selection)"""
+    # Verify sale belongs to user
+    sale_result = await db.execute(
+        select(Sale).where(Sale.id == sale_id, Sale.user_id == user_id)
+    )
+    sale = sale_result.scalar_one_or_none()
+    if not sale:
+        raise ValueError("Sale not found")
+
+    if sale.status != "in_progress":
+        raise ValueError("Can only select next delivery for in-progress sales")
+
+    # Verify the customer delivery step exists and is pending
+    step_result = await db.execute(
+        select(SaleDeliveryStep).where(
+            SaleDeliveryStep.sale_id == sale_id,
+            SaleDeliveryStep.customer_id == customer_id
+        )
+    )
+    step = step_result.scalar_one_or_none()
+    if not step:
+        raise ValueError("Delivery step not found for this customer")
+
+    if step.status != "pending":
+        raise ValueError("Can only select pending deliveries as next")
+
+    # Clear is_next on all delivery steps for this sale
+    await db.execute(
+        update(SaleDeliveryStep)
+        .where(SaleDeliveryStep.sale_id == sale_id)
+        .values(is_next=False)
+    )
+
+    # Set is_next on the selected customer
+    await db.execute(
+        update(SaleDeliveryStep)
+        .where(
+            SaleDeliveryStep.sale_id == sale_id,
+            SaleDeliveryStep.customer_id == customer_id
+        )
+        .values(is_next=True)
+    )
+
+    await db.commit()
+    return True
+
+
 async def complete_delivery(
     db: AsyncSession,
     sale_id: int,
@@ -195,6 +250,7 @@ async def complete_delivery(
         )
         .values(
             status="completed",
+            is_next=False,
             completed_at=datetime.now(),
             amount_collected=amount_collected
         )
@@ -238,6 +294,7 @@ async def skip_delivery(
         )
         .values(
             status="skipped",
+            is_next=False,
             skip_reason=reason
         )
         .returning(SaleDeliveryStep)
@@ -278,6 +335,7 @@ async def reset_delivery_to_pending(
         )
         .values(
             status="pending",
+            is_next=False,
             completed_at=None,
             amount_collected=None,
             skip_reason=None
@@ -343,10 +401,10 @@ async def get_delivery_progress(db: AsyncSession, sale_id: int, user_id: int) ->
     total_collected = sum(d["amount_collected"] or 0 for d in completed)
     total_expected = sum(d["total_amount"] for d in delivery_route)
     total_skipped_amount = sum(d["total_amount"] for d in skipped)
-    
-    # Get current delivery (first pending)
-    current_delivery = pending[0] if pending else None
-    
+
+    # Get current delivery (the one with is_next=True)
+    current_delivery = next((d for d in pending if d["is_next"]), None)
+
     return {
         "total_deliveries": total_deliveries,
         "completed_count": len(completed),
@@ -355,5 +413,6 @@ async def get_delivery_progress(db: AsyncSession, sale_id: int, user_id: int) ->
         "total_collected": total_collected,
         "total_expected": total_expected,
         "total_skipped_amount": total_skipped_amount,
-        "current_delivery": current_delivery
+        "current_delivery": current_delivery,
+        "pending_deliveries": pending
     }
