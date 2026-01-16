@@ -33,6 +33,7 @@
 - Store customer information (name, address, phone)
 - Track customer purchase history
 - Organized delivery routes
+- **Credit System** - Pre-paid balance that automatically applies during delivery
 
 ### 📦 Sales & Orders
 - Create sales with multiple customers and products
@@ -45,6 +46,14 @@
 - **Flexible status management** - Mark as delivered, skip, or reset
 - **Order cutoff system** - Configurable 36-hour cutoff before delivery
 - **Sale lifecycle** - Draft → Closed → In Progress → Completed
+- **Credit integration** - Automatic credit application on delivery completion
+
+### 💳 Credit System
+- **Pre-paid balances** - Customers can have credit stored on their account
+- **Automatic application** - Credit is applied when marking delivery as complete
+- **Smart calculation** - If credit >= order: pay €0; if credit < order: pay difference
+- **Audit trail** - Track credit applied per delivery step
+- **Reversible** - Credit is restored if delivery is reset to pending
 
 ### 🔐 Authentication & Security
 - JWT-based authentication
@@ -210,11 +219,35 @@ POST /sales/1/delivery
 <summary><b>Mark Delivery Complete</b></summary>
 
 ```bash
-PATCH /sales/1/delivery/customers/5/status
+# Customer has €5 credit, order total is €12.50
+# Credit is automatically applied: €12.50 - €5.00 = €7.50 to collect
+
+PATCH /sales/1/delivery/customers/5
 {
   "status": "completed",
-  "amount_collected": 12.50
+  "amount_collected": 7.50
 }
+
+# Response includes credit_applied: 5.00
+# Customer's credit balance is now €0
+```
+</details>
+
+<details>
+<summary><b>Complete Delivery Fully Covered by Credit</b></summary>
+
+```bash
+# Customer has €20 credit, order total is €12.50
+# Credit covers entire order: amount_collected = 0
+
+PATCH /sales/1/delivery/customers/5
+{
+  "status": "completed",
+  "amount_collected": 0
+}
+
+# Response includes credit_applied: 12.50
+# Customer's credit balance is now €7.50
 ```
 </details>
 
@@ -325,6 +358,19 @@ breakfast-business-api/
 </details>
 
 <details>
+<summary><b>Customer</b></summary>
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | Integer | Primary key |
+| user_id | Integer | Owner |
+| name | String | Customer name |
+| address | String | Delivery address |
+| phone | String | Contact phone |
+| credit | Float | Pre-paid credit balance (default 0.0) |
+</details>
+
+<details>
 <summary><b>SaleDeliveryStep</b> (Phase 1)</summary>
 
 | Column | Type | Description |
@@ -335,7 +381,8 @@ breakfast-business-api/
 | sequence_order | Integer | Delivery order |
 | status | String | pending/completed/skipped |
 | completed_at | DateTime | When delivered |
-| amount_collected | Float | Money received |
+| amount_collected | Float | Cash received |
+| credit_applied | Float | Credit deducted from customer balance |
 | skip_reason | String | Why skipped |
 </details>
 
