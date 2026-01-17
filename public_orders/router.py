@@ -13,6 +13,8 @@ from public_orders.schemas import (
     UpdateOrderResponse,
     DeliveryStatusResponse
 )
+from notifications.schemas import DeviceRegisterRequest, DeviceRegisterResponse
+from notifications import crud as notifications_crud
 
 router = APIRouter(prefix="/customer", tags=["public-customer"])
 
@@ -181,4 +183,58 @@ async def stream_delivery_status(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
         }
+    )
+
+
+@router.post("/{token}/devices", response_model=DeviceRegisterResponse)
+async def register_device(
+    token: str,
+    device: DeviceRegisterRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Public endpoint - no authentication required.
+
+    Register a device for push notifications.
+    The device token is typically obtained from Firebase Cloud Messaging.
+    """
+    # Get customer ID from token
+    customer_id = await notifications_crud.get_customer_id_by_token(db, token)
+    if not customer_id:
+        raise HTTPException(status_code=404, detail="Invalid customer token")
+
+    await notifications_crud.register_device(
+        db,
+        customer_id=customer_id,
+        device_token=device.device_token,
+        device_type=device.device_type
+    )
+
+    return DeviceRegisterResponse(
+        success=True,
+        message="Device registered successfully"
+    )
+
+
+@router.delete("/{token}/devices", response_model=DeviceRegisterResponse)
+async def unregister_device(
+    token: str,
+    device: DeviceRegisterRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Public endpoint - no authentication required.
+
+    Unregister a device from push notifications.
+    """
+    # Verify token is valid
+    customer_id = await notifications_crud.get_customer_id_by_token(db, token)
+    if not customer_id:
+        raise HTTPException(status_code=404, detail="Invalid customer token")
+
+    success = await notifications_crud.unregister_device(db, device.device_token)
+
+    return DeviceRegisterResponse(
+        success=success,
+        message="Device unregistered" if success else "Device not found"
     )

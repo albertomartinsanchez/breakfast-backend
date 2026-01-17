@@ -13,6 +13,9 @@ from products.router_analytics import router as product_analytics_router
 from analytics.router import router as analytics_router
 from public_orders.router import router as public_orders_router
 
+# Import models to ensure they're registered with SQLAlchemy
+from notifications.models import PushDevice  # noqa: F401
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()

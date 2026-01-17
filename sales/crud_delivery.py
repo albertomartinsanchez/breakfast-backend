@@ -4,10 +4,17 @@ from sqlalchemy.orm import selectinload
 from typing import List, Dict
 from datetime import datetime
 from collections import defaultdict
+import asyncio
 
 from sales.models import Sale, SaleItem
 from sales.models import SaleDeliveryStep
 from customers.models import Customer
+from notifications.events import (
+    notify_delivery_started,
+    notify_you_are_next,
+    notify_delivery_completed,
+    notify_delivery_skipped
+)
 
 async def start_delivery(db: AsyncSession, sale_id: int, user_id: int) -> bool:
     """
@@ -51,8 +58,13 @@ async def start_delivery(db: AsyncSession, sale_id: int, user_id: int) -> bool:
     
     # Update sale status
     sale.status = "in_progress"
-    
+
     await db.commit()
+
+    # Send push notifications to all customers (fire and forget)
+    customer_ids = [cid for cid, _ in sorted_customers]
+    asyncio.create_task(notify_delivery_started(db, sale_id, customer_ids))
+
     return True
 
 
@@ -246,6 +258,10 @@ async def set_next_delivery(
     )
 
     await db.commit()
+
+    # Send "you're next" notification (fire and forget)
+    asyncio.create_task(notify_you_are_next(db, sale_id, customer_id))
+
     return True
 
 
@@ -309,6 +325,11 @@ async def complete_delivery(
     # Check if all deliveries are done
     await check_and_complete_sale(db, sale_id)
 
+    # Send delivery completed notification (fire and forget)
+    asyncio.create_task(notify_delivery_completed(
+        db, sale_id, customer_id, amount_collected, credit_applied
+    ))
+
     return {
         "success": True,
         "total_order_amount": total_order_amount,
@@ -352,12 +373,15 @@ async def skip_delivery(
     updated = result.scalar_one_or_none()
     if not updated:
         raise ValueError("Delivery step not found or already completed/skipped")
-    
+
     await db.commit()
-    
+
     # Check if all deliveries are done
     await check_and_complete_sale(db, sale_id)
-    
+
+    # Send delivery skipped notification (fire and forget)
+    asyncio.create_task(notify_delivery_skipped(db, sale_id, customer_id, reason))
+
     return True
 
 
