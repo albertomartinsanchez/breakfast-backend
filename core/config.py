@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     jwt_expiration_hours: int = 24
     order_cutoff_hours: int = 36
     # Firebase Cloud Messaging - path to service account JSON file
-    firebase_credentials_path: str = ""
+    firebase_credentials_path: str = "firebase_credentials.json"
 
     model_config = ConfigDict(
         env_file=".env",

@@ -209,3 +209,6 @@ __marimo__/
 # Postgres databases
 *.db
 local-tools/backup
+
+# Firebase credentials
+core/*credentials*.json
