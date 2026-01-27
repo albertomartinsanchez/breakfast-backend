@@ -22,8 +22,8 @@ async def notify_sale_open(db: AsyncSession, sale_id: int, sale_date: str, custo
     result = await send_to_customers(
         db,
         customer_ids,
-        title="New Sale Available!",
-        body=f"A new sale for {sale_date} is now open. Place your order!",
+        title="¡Nueva venta disponible!",
+        body=f"La venta del {sale_date} está abierta. ¡Haz tu pedido!",
         data={"sale_id": sale_id, "sale_date": sale_date},
         notification_type=NotificationType.SALE_OPEN
     )
@@ -38,8 +38,8 @@ async def notify_sale_closed(db: AsyncSession, sale_id: int, customer_ids: List[
     result = await send_to_customers(
         db,
         customer_ids,
-        title="Orders Closed",
-        body="Order cutoff reached. Your order will be delivered soon!",
+        title="Pedidos cerrados",
+        body="Se ha cerrado el plazo de pedidos. ¡Pronto recibirás tu entrega!",
         data={"sale_id": sale_id},
         notification_type=NotificationType.SALE_CLOSED
     )
@@ -54,8 +54,8 @@ async def notify_sale_deleted(db: AsyncSession, sale_id: int, sale_date: str, cu
     result = await send_to_customers(
         db,
         customer_ids,
-        title="Sale Cancelled",
-        body=f"The sale for {sale_date} has been cancelled.",
+        title="Venta cancelada",
+        body=f"La venta del {sale_date} ha sido cancelada.",
         data={"sale_id": sale_id, "sale_date": sale_date},
         notification_type=NotificationType.SALE_DELETED
     )
@@ -70,8 +70,8 @@ async def notify_delivery_started(db: AsyncSession, sale_id: int, customer_ids: 
     result = await send_to_customers(
         db,
         customer_ids,
-        title="Delivery Started!",
-        body="Your delivery is on its way! Track your position in the app.",
+        title="¡Reparto iniciado!",
+        body="Tu pedido está en camino. ¡Sigue tu posición en la app!",
         data={"sale_id": sale_id},
         notification_type=NotificationType.DELIVERY_STARTED
     )
@@ -86,8 +86,8 @@ async def notify_you_are_next(db: AsyncSession, sale_id: int, customer_id: int):
     result = await send_to_customer(
         db,
         customer_id,
-        title="You're Next!",
-        body="The driver is heading to you next. Please be ready!",
+        title="¡Eres el siguiente!",
+        body="El repartidor se dirige hacia ti. ¡Prepárate!",
         data={"sale_id": sale_id},
         notification_type=NotificationType.YOU_ARE_NEXT
     )
@@ -105,14 +105,14 @@ async def notify_delivery_completed(
     """Notify customer their delivery is completed"""
     logger.info(f"Sending delivery_completed notification to customer {customer_id}")
 
-    body = "Your delivery has been completed!"
+    body = "¡Tu pedido ha sido entregado!"
     if credit_applied > 0:
-        body = f"Delivery completed! Credit applied: ${credit_applied:.2f}"
+        body = f"¡Pedido entregado! Crédito aplicado: {credit_applied:.2f}€"
 
     result = await send_to_customer(
         db,
         customer_id,
-        title="Delivery Complete!",
+        title="¡Entrega completada!",
         body=body,
         data={
             "sale_id": sale_id,
@@ -134,14 +134,14 @@ async def notify_delivery_skipped(
     """Notify customer their delivery was skipped"""
     logger.info(f"Sending delivery_skipped notification to customer {customer_id}")
 
-    body = "Your delivery was skipped."
+    body = "Tu entrega ha sido omitida."
     if reason:
-        body = f"Your delivery was skipped: {reason}"
+        body = f"Tu entrega ha sido omitida: {reason}"
 
     result = await send_to_customer(
         db,
         customer_id,
-        title="Delivery Skipped",
+        title="Entrega omitida",
         body=body,
         data={"sale_id": sale_id, "reason": reason or ""},
         notification_type=NotificationType.DELIVERY_SKIPPED
