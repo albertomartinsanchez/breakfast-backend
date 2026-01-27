@@ -47,6 +47,22 @@ async def notify_sale_closed(db: AsyncSession, sale_id: int, customer_ids: List[
     return result
 
 
+async def notify_sale_deleted(db: AsyncSession, sale_id: int, sale_date: str, customer_ids: List[int]):
+    """Notify customers that a sale has been deleted/cancelled"""
+    logger.info(f"Sending sale_deleted notifications for sale {sale_id} to {len(customer_ids)} customers")
+
+    result = await send_to_customers(
+        db,
+        customer_ids,
+        title="Sale Cancelled",
+        body=f"The sale for {sale_date} has been cancelled.",
+        data={"sale_id": sale_id, "sale_date": sale_date},
+        notification_type=NotificationType.SALE_DELETED
+    )
+    logger.info(f"Sale deleted notifications: {result}")
+    return result
+
+
 async def notify_delivery_started(db: AsyncSession, sale_id: int, customer_ids: List[int]):
     """Notify customers that delivery has started"""
     logger.info(f"Sending delivery_started notifications for sale {sale_id}")

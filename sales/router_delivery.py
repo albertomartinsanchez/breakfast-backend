@@ -1,18 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from typing import List, Optional, Literal
 from datetime import datetime, time, timedelta
 from pydantic import BaseModel, Field
+import asyncio
 
 from core.database import get_db
 from core.config import settings
 from auth.dependencies import get_current_user
 from auth.models import User
 from sales import crud_delivery
+from sales.models import Sale, SaleItem
 from sales.schemas import (
     DeliveryStepResponse,
     DeliveryProgressResponse,
+    CustomerSequence,
 )
+from notifications.events import notify_sale_closed
 
 router = APIRouter(prefix="/sales", tags=["sales", "delivery"])
 
@@ -41,6 +47,11 @@ class DeliveryCustomerUpdate(BaseModel):
     status: Optional[Literal["completed", "skipped", "pending"]] = Field(None, description="Update status")
     amount_collected: Optional[float] = Field(None, ge=0, description="Amount collected (0 if fully covered by credit)")
     skip_reason: Optional[str] = Field(None, min_length=1, description="Reason for skipping (required for skipped)")
+
+
+class DeliveryRouteUpdate(BaseModel):
+    """Schema for updating delivery route order"""
+    route: List[CustomerSequence]
 
 
 # ============================================================================
@@ -94,7 +105,7 @@ async def update_sale(
 ):
     """
     Update sale fields (status, date, etc.)
-    
+
     Examples:
     - Close sale: {"status": "closed"}
     - Reopen sale: {"status": "draft"}
@@ -103,7 +114,7 @@ async def update_sale(
     """
     from sales.crud import get_sale_by_id
     from datetime import date as date_type
-    
+
     # Get sale
     sale = await get_sale_by_id(db, sale_id, current_user.id)
     if not sale:
@@ -111,7 +122,10 @@ async def update_sale(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Sale {sale_id} not found"
         )
-    
+
+    # Track if we're closing the sale (for notification)
+    is_closing = updates.status == "closed" and sale.status != "closed"
+
     # Validate state transitions
     if updates.status:
         valid_transitions = {
@@ -120,15 +134,15 @@ async def update_sale(
             "in_progress": ["completed"],
             "completed": []
         }
-        
+
         if updates.status not in valid_transitions.get(sale.status, []) and updates.status != sale.status:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot transition from '{sale.status}' to '{updates.status}'"
             )
-        
+
         sale.status = updates.status
-    
+
     # Update date if provided
     if updates.date:
         try:
@@ -138,10 +152,16 @@ async def update_sale(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid date format. Use ISO format: YYYY-MM-DD"
             )
-    
+
     await db.commit()
     await db.refresh(sale)
-    
+
+    # Send notification if sale was closed
+    if is_closing:
+        customer_ids = list(set(item.customer_id for item in sale.items))
+        if customer_ids:
+            asyncio.create_task(notify_sale_closed(db, sale_id, customer_ids))
+
     return {
         "message": "Sale updated successfully",
         "sale_id": sale_id,
@@ -193,6 +213,30 @@ async def get_delivery(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
+
+@router.patch("/{sale_id}/delivery", status_code=status.HTTP_200_OK)
+async def update_delivery_route_endpoint(
+    sale_id: int,
+    data: DeliveryRouteUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update delivery route order.
+
+    Accepts a list of customer_id and sequence pairs to reorder the delivery route.
+    Cannot be used on completed sales.
+    """
+    try:
+        route_data = [{"customer_id": r.customer_id, "sequence": r.sequence} for r in data.route]
+        await crud_delivery.update_delivery_route(db, sale_id, route_data, current_user.id)
+        return {"message": "Route updated successfully", "sale_id": sale_id}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
 

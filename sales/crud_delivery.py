@@ -20,7 +20,7 @@ async def start_delivery(db: AsyncSession, sale_id: int, user_id: int) -> bool:
     """
     Start delivery process:
     1. Verify sale is closed
-    2. Create SaleDeliveryStep for each unique customer
+    2. Create SaleDeliveryStep for each unique customer (if not already created via route setting)
     3. Set initial sequence order (alphabetical by customer name)
     4. Change sale status to in_progress
     """
@@ -33,29 +33,52 @@ async def start_delivery(db: AsyncSession, sale_id: int, user_id: int) -> bool:
         )
     )
     sale = result.scalar_one_or_none()
-    
+
     if not sale:
         raise ValueError("Sale not found or not in 'closed' status")
-    
+
+    # Check if delivery steps already exist (created when setting route)
+    existing_result = await db.execute(
+        select(SaleDeliveryStep).where(SaleDeliveryStep.sale_id == sale_id)
+    )
+    existing_steps = existing_result.scalars().all()
+
+    if existing_steps:
+        # Steps already exist, just update sale status and mark first as next
+        sale.status = "in_progress"
+
+        # Mark the first customer (lowest sequence_order) as is_next
+        first_step = min(existing_steps, key=lambda s: s.sequence_order)
+        first_step.is_next = True
+
+        await db.commit()
+
+        # Send push notifications to all customers
+        customer_ids = [step.customer_id for step in existing_steps]
+        asyncio.create_task(notify_delivery_started(db, sale_id, customer_ids))
+        return True
+
+    # No steps exist, create them with default order (alphabetical)
     # Get unique customers from sale items, sorted by name
     customer_map = {}
     for item in sale.items:
         if item.customer_id not in customer_map:
             customer_map[item.customer_id] = item.customer.name
-    
+
     # Sort customers alphabetically by name
     sorted_customers = sorted(customer_map.items(), key=lambda x: x[1])
-    
+
     # Create delivery steps
     for sequence, (customer_id, _) in enumerate(sorted_customers, start=1):
         delivery_step = SaleDeliveryStep(
             sale_id=sale_id,
             customer_id=customer_id,
             sequence_order=sequence,
-            status="pending"
+            status="pending",
+            is_next=(sequence == 1)  # First customer is marked as next
         )
         db.add(delivery_step)
-    
+
     # Update sale status
     sale.status = "in_progress"
 
@@ -157,25 +180,45 @@ async def get_delivery_route(db: AsyncSession, sale_id: int, user_id: int) -> Li
     return delivery_route
 
 async def update_delivery_route(
-    db: AsyncSession, 
-    sale_id: int, 
-    route: List[Dict], 
+    db: AsyncSession,
+    sale_id: int,
+    route: List[Dict],
     user_id: int
 ) -> bool:
-    """Update sequence order using offset to avoid conflicts"""
+    """Update sequence order using offset to avoid conflicts, or create steps if none exist"""
     # Verify sale belongs to user and check status
     sale_result = await db.execute(
         select(Sale).where(Sale.id == sale_id, Sale.user_id == user_id)
     )
     sale = sale_result.scalar_one_or_none()
-    
+
     if not sale:
         raise ValueError("Sale not found")
-    
+
     # Don't allow route changes if delivery is completed
     if sale.status == "completed":
         raise ValueError("Cannot modify route for completed delivery")
-    
+
+    # Check if delivery steps exist
+    existing_result = await db.execute(
+        select(SaleDeliveryStep).where(SaleDeliveryStep.sale_id == sale_id)
+    )
+    existing_steps = existing_result.scalars().all()
+
+    if not existing_steps:
+        # No steps exist yet (sale is closed), create them with the provided order
+        for item in route:
+            delivery_step = SaleDeliveryStep(
+                sale_id=sale_id,
+                customer_id=item["customer_id"],
+                sequence_order=item["sequence"],
+                status="pending"
+            )
+            db.add(delivery_step)
+        await db.commit()
+        return True
+
+    # Steps exist, update their order
     # Get max sequence to calculate offset
     max_seq_result = await db.execute(
         select(func.max(SaleDeliveryStep.sequence_order))
@@ -183,16 +226,16 @@ async def update_delivery_route(
     )
     max_seq = max_seq_result.scalar() or 0
     offset = max_seq + 1000  # Large offset to avoid any conflicts
-    
+
     # Step 1: Add offset to all sequences
     await db.execute(
         update(SaleDeliveryStep)
         .where(SaleDeliveryStep.sale_id == sale_id)
         .values(sequence_order=SaleDeliveryStep.sequence_order + offset)
     )
-    
+
     await db.flush()
-    
+
     # Step 2: Update to final values
     for item in route:
         await db.execute(
@@ -203,7 +246,7 @@ async def update_delivery_route(
             )
             .values(sequence_order=item["sequence"])
         )
-    
+
     await db.commit()
     return True
 

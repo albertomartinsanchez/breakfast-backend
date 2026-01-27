@@ -2,10 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from collections import defaultdict
+import asyncio
 from core.database import get_db
 from auth.dependencies import get_current_user
 from auth.models import User
 from sales import crud, schemas
+from customers.crud import get_customers
+from notifications.events import notify_sale_open, notify_sale_deleted
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
@@ -60,6 +63,14 @@ async def get_sale(sale_id: int, db: AsyncSession = Depends(get_db), current_use
 async def create_sale(sale_in: schemas.SaleCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
         sale = await crud.create_sale(db, sale_in, current_user.id)
+
+        # Notify all customers that a new sale is open
+        customers = await get_customers(db, current_user.id)
+        if customers:
+            customer_ids = [c.id for c in customers]
+            sale_date = str(sale.date)
+            asyncio.create_task(notify_sale_open(db, sale.id, sale_date, customer_ids))
+
         return build_sale_response(sale)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -76,5 +87,18 @@ async def update_sale(sale_id: int, sale_in: schemas.SaleUpdate, db: AsyncSessio
 
 @router.delete("/{sale_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sale(sale_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Get sale first to extract customer IDs and date for notification
+    sale = await crud.get_sale_by_id(db, sale_id, current_user.id)
+    if not sale:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Sale {sale_id} not found")
+
+    # Extract customer IDs from sale items
+    customer_ids = list(set(item.customer_id for item in sale.items))
+    sale_date = str(sale.date)
+
     if not await crud.delete_sale(db, sale_id, current_user.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Sale {sale_id} not found")
+
+    # Notify customers in the sale that it was deleted
+    if customer_ids:
+        asyncio.create_task(notify_sale_deleted(db, sale_id, sale_date, customer_ids))

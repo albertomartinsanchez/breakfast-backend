@@ -11,6 +11,7 @@ _firebase_app = None
 class NotificationType(str, Enum):
     SALE_OPEN = "sale_open"
     SALE_CLOSED = "sale_closed"
+    SALE_DELETED = "sale_deleted"
     DELIVERY_STARTED = "delivery_started"
     YOU_ARE_NEXT = "you_are_next"
     DELIVERY_COMPLETED = "delivery_completed"
