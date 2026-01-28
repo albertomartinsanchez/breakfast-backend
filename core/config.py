@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     order_cutoff_hours: int = 36
     # Firebase Cloud Messaging - path to service account JSON file
     firebase_credentials_path: str = "firebase_credentials.json"
+    # Encryption key for sensitive data (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    encryption_key: str = ""
 
     model_config = ConfigDict(
         env_file=".env",
