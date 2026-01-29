@@ -5,15 +5,13 @@ class Settings(BaseSettings):
     app_name: str = "Product Management API"
     app_version: str = "3.0."
     cors_origins: list = ["*"]
-    database_url: str = "sqlite+aiosqlite:///./core/breakfast.db"
-    jwt_secret_key: str = "your-secret-key-change-in-production"
+    database_url: str  # Required - set in .env or environment variable
+    jwt_secret_key: str  # Required - set in .env or environment variable
     jwt_algorithm: str = "HS256"
     jwt_expiration_hours: int = 24
     order_cutoff_hours: int = 36
-    # Firebase Cloud Messaging - path to service account JSON file
-    firebase_credentials_path: str = "firebase_credentials.json"
-    # Encryption key for sensitive data (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-    encryption_key: str = ""
+    firebase_credentials_path: str # Required - set in .env or environment variable
+    encryption_key: str  # Required - set in .env or environment variable
 
     model_config = ConfigDict(
         env_file=".env",
