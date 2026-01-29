@@ -48,10 +48,20 @@ async def check_encryption_key():
 
 async def add_name_index_column(engine):
     """Add name_index column if it doesn't exist."""
+    is_sqlite = "sqlite" in settings.database_url
+
     async with engine.connect() as conn:
-        # Check if column exists (SQLite specific)
-        result = await conn.execute(text("PRAGMA table_info(customer)"))
-        columns = [row[1] for row in result.fetchall()]
+        # Check if column exists
+        if is_sqlite:
+            result = await conn.execute(text("PRAGMA table_info(customer)"))
+            columns = [row[1] for row in result.fetchall()]
+        else:
+            # PostgreSQL
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'customer'"
+            ))
+            columns = [row[0] for row in result.fetchall()]
 
         if 'name_index' not in columns:
             print("[MIGRATING] Adding name_index column...")
