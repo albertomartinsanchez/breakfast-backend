@@ -1,40 +1,43 @@
+"""
+DEPRECATED: This module provides backward compatibility.
+New code should use ProductService from products.service instead.
+
+This module is kept to avoid breaking imports from other modules
+(sales/crud.py) that still use these functions.
+"""
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from typing import List, Optional
+
 from products.models import Product
 from products.schemas import ProductCreate, ProductUpdate
+from products.service import ProductService
+
 
 async def get_products(db: AsyncSession, user_id: int) -> List[Product]:
-    result = await db.execute(select(Product).where(Product.user_id == user_id))
-    return result.scalars().all()
+    """DEPRECATED: Use ProductService.get_all() instead."""
+    service = ProductService(db)
+    return await service.get_all(user_id)
+
 
 async def get_product_by_id(db: AsyncSession, product_id: int, user_id: int) -> Optional[Product]:
-    result = await db.execute(select(Product).where(Product.id == product_id, Product.user_id == user_id))
-    return result.scalar_one_or_none()
+    """DEPRECATED: Use ProductService.get_by_id() instead."""
+    service = ProductService(db)
+    return await service.get_by_id(product_id, user_id)
+
 
 async def create_product(db: AsyncSession, product_in: ProductCreate, user_id: int) -> Product:
-    db_product = Product(user_id=user_id, name=product_in.name, description=product_in.description, buy_price=product_in.buy_price, sell_price=product_in.sell_price)
-    db.add(db_product)
-    await db.commit()
-    await db.refresh(db_product)
-    return db_product
+    """DEPRECATED: Use ProductService.create() instead."""
+    service = ProductService(db)
+    return await service.create(product_in, user_id)
+
 
 async def update_product(db: AsyncSession, product_id: int, product_in: ProductUpdate, user_id: int) -> Optional[Product]:
-    db_product = await get_product_by_id(db, product_id, user_id)
-    if not db_product:
-        return None
-    db_product.name = product_in.name
-    db_product.description = product_in.description
-    db_product.buy_price = product_in.buy_price
-    db_product.sell_price = product_in.sell_price
-    await db.commit()
-    await db.refresh(db_product)
-    return db_product
+    """DEPRECATED: Use ProductService.update() instead."""
+    service = ProductService(db)
+    return await service.update(product_id, product_in, user_id)
+
 
 async def delete_product(db: AsyncSession, product_id: int, user_id: int) -> bool:
-    db_product = await get_product_by_id(db, product_id, user_id)
-    if not db_product:
-        return False
-    await db.delete(db_product)
-    await db.commit()
-    return True
+    """DEPRECATED: Use ProductService.delete() instead."""
+    service = ProductService(db)
+    return await service.delete(product_id, user_id)
