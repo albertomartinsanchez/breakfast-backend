@@ -3,7 +3,7 @@ from pydantic import ConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Product Management API"
-    app_version: str = "3.0."
+    app_version: str = "3.0.0"
     cors_origins: list = ["*"]
     database_url: str  # Required - set in .env or environment variable
     jwt_secret_key: str  # Required - set in .env or environment variable

@@ -212,3 +212,6 @@ local-tools/backup
 
 # Firebase credentials
 core/*credentials*.json
+
+# Claude Code
+.claude/

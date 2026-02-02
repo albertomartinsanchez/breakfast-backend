@@ -3,4 +3,4 @@ class TestRoot:
         response = await client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["version"] == "2.0.1"
+        assert data["version"] == "3.0.0"

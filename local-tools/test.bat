@@ -4,7 +4,7 @@ pip install -r requirements-dev.txt
 
 echo.
 echo Running tests with coverage...
-pytest
+python -m pytest
 
 echo.
 echo Coverage report: htmlcov/index.html
