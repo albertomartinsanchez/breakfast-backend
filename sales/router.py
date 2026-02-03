@@ -10,7 +10,8 @@ from core.config import settings
 from auth.dependencies import get_current_user
 from auth.models import User
 from sales.service import SaleService
-from sales import crud_delivery, schemas
+from sales.delivery_service import DeliveryService
+from sales import schemas
 from customers.service import CustomerService
 from notifications.events import notify_sale_open, notify_sale_deleted, notify_sale_closed
 
@@ -25,6 +26,11 @@ def get_sale_service(db: AsyncSession = Depends(get_db)) -> SaleService:
 def get_customer_service(db: AsyncSession = Depends(get_db)) -> CustomerService:
     """Dependency to get CustomerService instance."""
     return CustomerService(db)
+
+
+def get_delivery_service(db: AsyncSession = Depends(get_db)) -> DeliveryService:
+    """Dependency to get DeliveryService instance."""
+    return DeliveryService(db)
 
 
 def build_sale_response(sale) -> schemas.SaleResponse:
@@ -295,7 +301,7 @@ async def get_sale_state(
 @router.post("/{sale_id}/deliveries", status_code=status.HTTP_201_CREATED, tags=["deliveries"])
 async def create_delivery(
     sale_id: int,
-    db: AsyncSession = Depends(get_db),
+    delivery_service: DeliveryService = Depends(get_delivery_service),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -305,7 +311,7 @@ async def create_delivery(
     - Sale must be in 'closed' status
     """
     try:
-        await crud_delivery.start_delivery(db, sale_id, current_user.id)
+        await delivery_service.start_delivery(sale_id, current_user.id)
         return {
             "message": "Delivery created successfully",
             "sale_id": sale_id,
@@ -321,12 +327,12 @@ async def create_delivery(
 @router.get("/{sale_id}/deliveries", response_model=List[schemas.DeliveryStepResponse], tags=["deliveries"])
 async def get_deliveries(
     sale_id: int,
-    db: AsyncSession = Depends(get_db),
+    delivery_service: DeliveryService = Depends(get_delivery_service),
     current_user: User = Depends(get_current_user)
 ):
     """Get delivery route with all steps ordered by sequence."""
     try:
-        delivery_route = await crud_delivery.get_delivery_route(db, sale_id, current_user.id)
+        delivery_route = await delivery_service.get_delivery_route(sale_id, current_user.id)
         return delivery_route
     except ValueError as e:
         raise HTTPException(
@@ -339,7 +345,7 @@ async def get_deliveries(
 async def update_delivery_route(
     sale_id: int,
     data: schemas.DeliveryRouteUpdate,
-    db: AsyncSession = Depends(get_db),
+    delivery_service: DeliveryService = Depends(get_delivery_service),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -350,7 +356,7 @@ async def update_delivery_route(
     """
     try:
         route_data = [{"customer_id": r.customer_id, "sequence": r.sequence} for r in data.route]
-        await crud_delivery.update_delivery_route(db, sale_id, route_data, current_user.id)
+        await delivery_service.update_delivery_route(sale_id, route_data, current_user.id)
         return {"message": "Route updated successfully", "sale_id": sale_id}
     except ValueError as e:
         raise HTTPException(
@@ -362,12 +368,12 @@ async def update_delivery_route(
 @router.get("/{sale_id}/deliveries/progress", response_model=schemas.DeliveryProgressResponse, tags=["deliveries"])
 async def get_delivery_progress(
     sale_id: int,
-    db: AsyncSession = Depends(get_db),
+    delivery_service: DeliveryService = Depends(get_delivery_service),
     current_user: User = Depends(get_current_user)
 ):
     """Get delivery progress statistics."""
     try:
-        progress = await crud_delivery.get_delivery_progress(db, sale_id, current_user.id)
+        progress = await delivery_service.get_delivery_progress(sale_id, current_user.id)
         return progress
     except ValueError as e:
         raise HTTPException(
@@ -385,7 +391,7 @@ async def update_delivery_customer(
     sale_id: int,
     customer_id: int,
     updates: schemas.DeliveryCustomerUpdate,
-    db: AsyncSession = Depends(get_db),
+    delivery_service: DeliveryService = Depends(get_delivery_service),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -400,7 +406,7 @@ async def update_delivery_customer(
     try:
         # Handle is_next selection
         if updates.is_next is True:
-            await crud_delivery.set_next_delivery(db, sale_id, customer_id, current_user.id)
+            await delivery_service.set_next_delivery(sale_id, customer_id, current_user.id)
             return {
                 "message": "Customer selected as next delivery",
                 "customer_id": customer_id,
@@ -415,8 +421,8 @@ async def update_delivery_customer(
                     detail="amount_collected is required when status is 'completed'"
                 )
 
-            await crud_delivery.complete_delivery(
-                db, sale_id, customer_id, updates.amount_collected, current_user.id
+            await delivery_service.complete_delivery(
+                sale_id, customer_id, updates.amount_collected, current_user.id
             )
 
             return {
@@ -433,8 +439,8 @@ async def update_delivery_customer(
                     detail="skip_reason is required when status is 'skipped'"
                 )
 
-            await crud_delivery.skip_delivery(
-                db, sale_id, customer_id, updates.skip_reason, current_user.id
+            await delivery_service.skip_delivery(
+                sale_id, customer_id, updates.skip_reason, current_user.id
             )
 
             return {
@@ -445,8 +451,8 @@ async def update_delivery_customer(
             }
 
         elif updates.status == "pending":
-            await crud_delivery.reset_delivery_to_pending(
-                db, sale_id, customer_id, current_user.id
+            await delivery_service.reset_delivery_to_pending(
+                sale_id, customer_id, current_user.id
             )
 
             return {
