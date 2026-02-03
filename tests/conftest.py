@@ -1,5 +1,5 @@
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, MagicMock
 from main import app
 from core.database import get_db
@@ -25,11 +25,11 @@ async def client(mock_db, mock_user):
         return mock_user
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
-    async with AsyncClient(app=app, base_url="http://test") as test_client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as test_client:
         yield test_client
     app.dependency_overrides.clear()
 
 @pytest.fixture
 async def public_client():
-    async with AsyncClient(app=app, base_url="http://test") as test_client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as test_client:
         yield test_client
