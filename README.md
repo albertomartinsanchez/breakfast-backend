@@ -2,6 +2,7 @@
 
 > A modern FastAPI backend for managing a breakfast delivery business - built for efficiency, designed for growth.
 
+[![CI](https://github.com/albertomartinsanchez/breakfast-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/albertomartinsanchez/breakfast-backend/actions/workflows/ci.yml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-00C7B7?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-Async-003B57?style=flat&logo=sqlite)](https://www.sqlite.org/)
